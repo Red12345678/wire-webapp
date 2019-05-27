@@ -1,14 +1,12 @@
 {
-  "name": "avs-web",
+  "name": "@wireapp/avs",
   "version": "0.0.0",
   "description": "AVS API for the web",
   "main": "dist/avs_wcall.js",
   "scripts": {
     "prepack": "tsc && cp src/*.js dist/"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "license": "GPL-3.0",
   "devDependencies": {
     "typescript": "^3.4.5"
   }

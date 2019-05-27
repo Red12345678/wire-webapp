@@ -1,9 +1,11 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+var ENV_FIREFOX = 1;
 var em_module;
 var logFn = function () { };
 var userMediaHandler = null;
 var mediaStreamHandler = function () { };
+var pc_env = 0;
 /* The following constants closely reflect the values
  * defined in the the C-land counterpart peerconnection_js.c
  */
@@ -190,6 +192,9 @@ function dataChannelHandler(pc, event) {
     var dcHnd = setupDataChannel(pc, dc);
     ccallDcEstabHandler(pc, dcHnd);
 }
+function pc_SetEnv(env) {
+    pc_env == env;
+}
 function pc_New(self, convidPtr) {
     pc_log(LOG_LEVEL_DEBUG, "pc_New");
     var pc = {
@@ -261,6 +266,28 @@ function pc_AddTurnServer(hnd, urlPtr, usernamePtr, passwordPtr) {
     };
     pc.turnServers.push(server);
 }
+function sdpMap(sdp, local) {
+    var sdpLines = [];
+    sdp.split('\r\n').forEach(function (sdpLine) {
+        var outline = sdpLine;
+        if (local) {
+            outline = sdpLine.replace(/^m=(application|video) 0/, 'm=$1 9');
+        }
+        else {
+            if (sdpLine.startsWith('a=sctpmap:')) {
+                outline = 'a=sctp-port:5000';
+            }
+            else if (sdpLine.startsWith('a=tool:')) {
+                outline = '';
+            }
+        }
+        if (outline !== undefined && outline !== '') {
+            sdpLines.push(outline);
+        }
+    });
+    return sdpLines.join('\r\n');
+    ;
+}
 function createSdp(pc, useAudio, useVideo, useScreenShare, isOffer) {
     var rtc = pc.rtc;
     if (!rtc) {
@@ -283,7 +310,13 @@ function createSdp(pc, useAudio, useVideo, useScreenShare, isOffer) {
             .bind(rtc)()
             .then(function (sdp) {
             var typeStr = sdp.type;
-            var sdpStr = sdp.sdp || '';
+            var sdpRaw = sdp.sdp || '';
+            var sdpStr = sdpRaw;
+            pc_log(LOG_LEVEL_INFO, "createSdp: env=" + pc_env);
+            if (pc_env === ENV_FIREFOX) {
+                sdpStr = sdpRaw.replace(' UDP/DTLS/SCTP', ' DTLS/SCTP');
+                sdpStr = sdpMap(sdpStr, true);
+            }
             ccallLocalSdpHandler(pc, 0, typeStr, sdpStr);
         })
             .catch(function (err) {
@@ -322,8 +355,13 @@ function pc_SetRemoteDescription(hnd, typePtr, sdpPtr) {
     if (!rtc) {
         return;
     }
+    var sdpStr = sdp;
+    if (pc_env === ENV_FIREFOX) {
+        sdpStr = sdp.replace(/ DTLS\/SCTP (5000|webrtc-datachannel)/, ' UDP/DTLS/SCTP webrtc-datachannel');
+        sdpStr = sdpMap(sdpStr, false);
+    }
     rtc
-        .setRemoteDescription({ type: type, sdp: sdp })
+        .setRemoteDescription({ type: type, sdp: sdpStr })
         .then(function () { })
         .catch(function (err) {
         pc_log(LOG_LEVEL_WARN, "setRemoteDescription failed: " + err);
@@ -506,6 +544,10 @@ function pc_DataChannelSend(hnd, dataPtr, dataLen) {
     if (dc == null) {
         return;
     }
+    if (dc.readyState !== 'open') {
+        pc_log(LOG_LEVEL_WARN, "pc_DataChannelSend: hnd=" + hnd + " not open");
+        return;
+    }
     //const data = new Uint8Array(em_module.HEAPU8.buffer, dataPtr, dataLen);
     var data = em_module.UTF8ToString(dataPtr);
     dc.send(data);
@@ -524,6 +566,7 @@ function pc_InitModule(module, logh) {
     logFn = logh;
     pc_log(LOG_LEVEL_INFO, "pc_InitModule");
     var callbacks = [
+        [pc_SetEnv, "vn"],
         [pc_New, "nns"],
         [pc_Create, "vn"],
         [pc_Close, "vn"],
