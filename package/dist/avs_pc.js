@@ -193,7 +193,7 @@ function dataChannelHandler(pc, event) {
     ccallDcEstabHandler(pc, dcHnd);
 }
 function pc_SetEnv(env) {
-    pc_env == env;
+    pc_env = env;
 }
 function pc_New(self, convidPtr) {
     pc_log(LOG_LEVEL_DEBUG, "pc_New");
@@ -269,7 +269,8 @@ function pc_AddTurnServer(hnd, urlPtr, usernamePtr, passwordPtr) {
 function sdpMap(sdp, local) {
     var sdpLines = [];
     sdp.split('\r\n').forEach(function (sdpLine) {
-        var outline = sdpLine;
+        var outline;
+        outline = sdpLine;
         if (local) {
             outline = sdpLine.replace(/^m=(application|video) 0/, 'm=$1 9');
         }
@@ -278,15 +279,14 @@ function sdpMap(sdp, local) {
                 outline = 'a=sctp-port:5000';
             }
             else if (sdpLine.startsWith('a=tool:')) {
-                outline = '';
+                outline = null;
             }
         }
-        if (outline !== undefined && outline !== '') {
+        if (outline != null) {
             sdpLines.push(outline);
         }
     });
     return sdpLines.join('\r\n');
-    ;
 }
 function createSdp(pc, useAudio, useVideo, useScreenShare, isOffer) {
     var rtc = pc.rtc;
@@ -310,13 +310,7 @@ function createSdp(pc, useAudio, useVideo, useScreenShare, isOffer) {
             .bind(rtc)()
             .then(function (sdp) {
             var typeStr = sdp.type;
-            var sdpRaw = sdp.sdp || '';
-            var sdpStr = sdpRaw;
-            pc_log(LOG_LEVEL_INFO, "createSdp: env=" + pc_env);
-            if (pc_env === ENV_FIREFOX) {
-                sdpStr = sdpRaw.replace(' UDP/DTLS/SCTP', ' DTLS/SCTP');
-                sdpStr = sdpMap(sdpStr, true);
-            }
+            var sdpStr = sdp.sdp || '';
             ccallLocalSdpHandler(pc, 0, typeStr, sdpStr);
         })
             .catch(function (err) {
@@ -405,9 +399,15 @@ function pc_LocalDescription(hnd, typePtr) {
         }
     }
     var sdp = sdpDesc.sdp.toString();
-    var sdpLen = em_module.lengthBytesUTF8(sdp) + 1; // +1 for '\0'
+    var sdpStr = sdp;
+    pc_log(LOG_LEVEL_INFO, "createSdp: env=" + pc_env);
+    if (pc_env === ENV_FIREFOX) {
+        sdpStr = sdp.replace(' UDP/DTLS/SCTP', ' DTLS/SCTP');
+        sdpStr = sdpMap(sdpStr, true);
+    }
+    var sdpLen = em_module.lengthBytesUTF8(sdpStr) + 1; // +1 for '\0'
     var ptr = em_module._malloc(sdpLen);
-    em_module.stringToUTF8(sdp, ptr, sdpLen);
+    em_module.stringToUTF8(sdpStr, ptr, sdpLen);
     return ptr;
 }
 function pc_IceGatheringState(hnd) {
